@@ -11,5 +11,4 @@ gunicorn
 python-dotenv
 langchain_community
 google-generativeai
-
-
+google-generative-ai
