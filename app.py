@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Load environment variables from a .env file
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+
 class SalesAgentBot:
     def __init__(self, file_path: str):
         self.file_path = file_path
@@ -152,7 +153,6 @@ class SalesAgentBot:
     def get_conversation_history(self) -> str:
         # Return the entire conversation history
         return "\n".join(self.history)
-
 import os
 import os
 import requests
