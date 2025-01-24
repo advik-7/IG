@@ -9,3 +9,5 @@ faiss-cpu
 requests
 gunicorn
 python-dotenv
+langchain_community
+
