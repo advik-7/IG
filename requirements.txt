@@ -10,4 +10,6 @@ requests
 gunicorn
 python-dotenv
 langchain_community
+google-generativeai
+
 
