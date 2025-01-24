@@ -348,6 +348,3 @@ def validate_signature(req):
 
     return signature_hash == expected_hash
 
-# Start server
-if __name__ == "__main__":
-    app.run()
