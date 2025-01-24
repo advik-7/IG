@@ -12,11 +12,11 @@ from langchain.chains import RetrievalQA
 from langchain.llms.base import LLM
 from typing import Optional, List, Mapping, Any
 import google.generativeai as genai
-from langchain.llms.base import LLM
-from typing import Optional, List, Mapping, Any
-import google.generativeai as genai
 
+from dotenv import load_dotenv
 
+load_dotenv()  # Load environment variables from a .env file
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 class SalesAgentBot:
     def __init__(self, file_path: str):
         self.file_path = file_path
