@@ -154,11 +154,33 @@ class SalesAgentBot:
         return "\n".join(self.history)
 
 import os
+import os
+import requests
 
-file_path="Company Text database.pdf"
+# Define the GitHub URL and the local file path
+GITHUB_URL = "https://raw.githubusercontent.com/advik-7/IG/main/Company%20Text%20database.pdf"
+LOCAL_FILE_PATH = "Company_Text_database.pdf"
 
+# Check if the file exists locally; if not, download it
+if not os.path.exists(LOCAL_FILE_PATH):
+    print("Downloading file from GitHub...")
+    response = requests.get(GITHUB_URL)
+    if response.status_code == 200:
+        with open(LOCAL_FILE_PATH, "wb") as file:
+            file.write(response.content)
+        print(f"File downloaded successfully and saved as {LOCAL_FILE_PATH}")
+    else:
+        print("Failed to download the file.")
+        exit(1)
 
+# Proceed with using the local file
+file_path = LOCAL_FILE_PATH
+
+# Initialize the bot with the file
 bot = SalesAgentBot(file_path)
+
+
+
 import re
 from datetime import datetime, timedelta
 
