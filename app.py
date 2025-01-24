@@ -241,7 +241,6 @@ VERIFY_TOKEN = "nigga"
 APP_SECRET = output[0]['access_token']
 app = Flask(__name__)
 
-# Webhook verification
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
     mode = request.args.get("hub.mode")
@@ -306,6 +305,7 @@ def handle_webhook():
         return "EVENT_RECEIVED", 200
     else:
         return "Not Found", 404
+
 
 def print_message(sender_id, message_text):
     print(f"Message from {sender_id}: {message_text}")
