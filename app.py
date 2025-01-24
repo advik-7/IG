@@ -7,7 +7,7 @@ import os
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from sentence_transformers import SentenceTransformer
 from langchain.chains import RetrievalQA
 from langchain.llms.base import LLM
