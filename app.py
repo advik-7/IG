@@ -86,8 +86,8 @@ class SalesAgentBot:
                 return response.text
 
         self.custom_gemini = CustomGemini(
-            temperature=0.7,
-            max_tokens=512,
+            temperature=0.8,
+            max_tokens=100,
             model="gemini-1.5-flash",
             google_api_key=os.environ["GEMINI_API_KEY"]
         )
@@ -122,15 +122,21 @@ class SalesAgentBot:
         # Add the user's query to the conversation history
         self.history.append(f"User: {query}")
 
-        # Add prompt for acting as a sales agent
-        prompt = f"""
-        You are a friendly and professional sales agent. Answer the customer's question briefly and concisely while maintaining helpfulness and clarity. Keep your responses short and to the point.
+        # Get the most recent 4-5 messages from the conversation history
+        conversation_context = "\n".join(self.history[-5:])
 
-        If the customer wishes to book a slot, ask them to type: "I wish to book a slot [date] [time]", replacing [date] and [time] with their preferred booking details. For example: "I wish to book a slot 2025-01-15 14:30".
+        prompt = f"""
+        You are a friendly and professional sales agent. Answer the customer's question briefly while maintaining clarity and helpfulness, acting as a company representative.
+
+        If the customer shows interest in the company or AI implementation, provide a brief and engaging overview, guiding them through the offerings. Only suggest scheduling an appointment once they express interest in learning more or taking the next step.
+
+        Here is the conversation so far:
+        {conversation_context}
 
         Here is the customer's question: "{query}"
-        Based on the company's information, provide a concise and helpful response.
+        Based on the company's info, provide a helpful response.
         """
+
 
 
         # Get the response from the model
@@ -147,9 +153,8 @@ class SalesAgentBot:
         return "\n".join(self.history)
 
 import os
-os.environ["GEMINI_API_KEY"]="AIzaSyCF2Xymk8vra8xjTh3QIIEfrLoXRIHMmLk"
 
-file_path="company_profile_practise1.pdf"
+file_path="Company Text database.pdf"
 
 
 bot = SalesAgentBot(file_path)
@@ -159,9 +164,9 @@ from datetime import datetime, timedelta
 # Function to handle chatbot processing
 def chatbot_response(user_message: str):
     # Check if the user is making a booking request
-    if check_booking_request(user_message):
+    if user_message==None:
         # If it's a valid booking request, the function already handled it
-        return "appoinment booked :)"
+        return "Server Issue :)"
     else:
         # Otherwise, process the query normally
         response = bot.process_query(user_message)
@@ -179,7 +184,7 @@ import requests
 import requests
 import os
 
-ACCESS_TOKEN = "EAAY4S7hHfy4BO7kOk0UJWlQMwNUxVZC1axqeEyEfdPVlHqYRYs4xvZCICUew4dCsmzelvyj6AeVZCx9fLYKZBOAAyYAaTvNpeYfncazls1FqJkY4Fh10G2dina4ZBRRlRSxV8eprpfNmBqMq1r5FGFPfxKCerrRgwZAPLmQ8YmXWZCCJdZAQ0e3ZCu3MW"
+ACCESS_TOKEN =os.environ["ACCESS_TOKEN"]
 BASE_URL = "https://graph.facebook.com/v21.0"
 
 def get_pages():
