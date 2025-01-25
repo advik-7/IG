@@ -235,7 +235,7 @@ VERIFY_TOKEN = "nigga"
 APP_SECRET = output[0]['access_token']
 app = Flask(__name__)
 
-@app.route("/webhook", methods=["GET"])
+@app.route("webhook", methods=["GET"])
 def verify_webhook():
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
@@ -249,7 +249,7 @@ def verify_webhook():
             return "Forbidden", 403
 
 # Handling incoming messages asynchronously
-@app.route("/webhook", methods=["POST"])
+@app.route("webhook", methods=["POST"])
 def handle_webhook():
     body = request.get_json()
 
