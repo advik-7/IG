@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Load environment variables from a .env file
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-
+GEMINI_API_KEY=os.getenv("GEMINI_API_KEY")
 class SalesAgentBot:
     def __init__(self, file_path: str):
         self.file_path = file_path
