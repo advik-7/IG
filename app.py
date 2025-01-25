@@ -343,9 +343,6 @@ def Agent(message_text):
     response_text = bot.process_query(message_text)
     return response_text
 
-
-
-# Signature validation (optional but recommended)
 def validate_signature(req):
     signature = req.headers.get("x-hub-signature-256")
     if not signature:
@@ -364,4 +361,3 @@ def validate_signature(req):
     ).hexdigest()
 
     return signature_hash == expected_hash
-
