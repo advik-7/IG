@@ -309,6 +309,7 @@ def print_message(sender_id, message_text):
     print(f"Message from {sender_id}: {message_text}")
     
     response_text = chatbot_response(message_text)
+    print(response_text)
 
     try:
         response = send_message(sender_id, response_text)
