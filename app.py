@@ -1,22 +1,74 @@
 import os
-from langchain_community.document_loaders import PyPDFLoader
+from langchain.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
+from langchain.vectorstores import FAISS
 from sentence_transformers import SentenceTransformer
 from langchain.chains import RetrievalQA
 from langchain.llms.base import LLM
 from typing import Optional, List, Mapping, Any
 import google.generativeai as genai
+from langchain.cache import InMemoryCache
+import sqlite3
+from datetime import datetime
+import langchain
 
+# Load environment variables
 from dotenv import load_dotenv
+load_dotenv()
 
-load_dotenv()  # Load environment variables from a .env file
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DB_PATH = os.getenv("DB_PATH", "user_histories.db")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-GEMINI_API_KEY=os.getenv("GEMINI_API_KEY")
+BASE_URL = "https://graph.facebook.com/v21.0"
+
+import os
+import os
+import requests
+
+# Define the GitHub URL and the local file path
+GITHUB_URL = "https://raw.githubusercontent.com/advik-7/IG/main/Company%20Text%20database.pdf"
+LOCAL_FILE_PATH = "Company_Text_database.pdf"
+
+# Check if the file exists locally; if not, download it
+if not os.path.exists(LOCAL_FILE_PATH):
+    print("Downloading file from GitHub...")
+    response = requests.get(GITHUB_URL)
+    if response.status_code == 200:
+        with open(LOCAL_FILE_PATH, "wb") as file:
+            file.write(response.content)
+        print(f"File downloaded successfully and saved as {LOCAL_FILE_PATH}")
+    else:
+        print("Failed to download the file.")
+        exit(1)
+
+# Proceed with using the local file
+file_path = LOCAL_FILE_PATH
+
+
+import os
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import FAISS
+from sentence_transformers import SentenceTransformer
+from langchain.chains import RetrievalQA
+from langchain.llms.base import LLM
+from typing import Optional, List, Mapping, Any
+import google.generativeai as genai
+from langchain.cache import InMemoryCache
+from typing import Optional, List, Mapping, Any
+import sqlite3
+from datetime import datetime
+# Use in-memory caching instead of Redis
+import langchain
+langchain.cache = InMemoryCache()
+
 class SalesAgentBot:
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, db_path: str, batch_size: int = 5):
         self.file_path = file_path
         self.history = []
+        self.batch_size = batch_size
+        self.db_path = db_path
+        self._initialize_database()
 
         # Load documents and prepare embeddings
         self.loader = PyPDFLoader(file_path)
@@ -25,21 +77,24 @@ class SalesAgentBot:
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
         self.texts = self.text_splitter.split_documents(self.documents)
 
+        # Load and quantize the Sentence Transformer model for embeddings
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.embeddings = self.model.encode([t.page_content for t in self.texts])
+
+        # Precompute and store embeddings
+        self.embeddings = self.model.encode([t.page_content for t in self.texts], show_progress_bar=True, device='cpu')
 
         class CustomEmbeddings:
             def __init__(self, model):
                 self.model = model
 
             def embed_documents(self, texts):
-                return self.model.encode(texts)
+                return self.model.encode(texts, batch_size=self.batch_size)
 
             def embed_query(self, text):
-                return self.model.encode(text)
+                return self.model.encode([text])[0]
 
             def __call__(self, text):
-                return self.model.encode(text)
+                return self.model.encode([text])[0]
 
         self.custom_embeddings = CustomEmbeddings(self.model)
 
@@ -114,17 +169,47 @@ class SalesAgentBot:
             llm=self.wrapped_llm, chain_type="stuff", retriever=self.retriever
         )
 
-    def process_query(self, query: str) -> str:
-        # Add the user's query to the conversation history
-        self.history.append(f"User: {query}")
+    def _initialize_database(self):
+        """Create the user_histories table if it doesn't exist."""
+        connection = sqlite3.connect(self.db_path)
+        cursor = connection.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_histories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        connection.commit()
+        connection.close()
+
+    def save_user_message(self, user_id: str, message: str):
+        """Save a message to the database."""
+        connection = sqlite3.connect(self.db_path)
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO user_histories (user_id, message) VALUES (?, ?)", (user_id, message))
+        connection.commit()
+        connection.close()
+
+    def get_user_history(self, user_id: str) -> List[str]:
+        """Retrieve conversation history for a user."""
+        connection = sqlite3.connect(self.db_path)
+        cursor = connection.cursor()
+        cursor.execute("SELECT message FROM user_histories WHERE user_id = ? ORDER BY timestamp ASC", (user_id,))
+        rows = cursor.fetchall()
+        connection.close()
+        return [row[0] for row in rows]
+
+    def process_query(self, user_id: str, query: str) -> str:
+        """Process user query and generate a response."""
+        self.save_user_message(user_id, f"User: {query}")
+        history = self.get_user_history(user_id)
 
         # Get the most recent 4-5 messages from the conversation history
-        conversation_context = "\n".join(self.history[-5:])
-
+        conversation_context = "\n".join(history[-5:])
         prompt = f"""
         You are a friendly and professional sales agent. Answer the customer's question briefly while maintaining clarity and helpfulness, acting as a company representative.
-
-        If the customer shows interest in the company or AI implementation, provide a brief and engaging overview, guiding them through the offerings. Only suggest scheduling an appointment once they express interest in learning more or taking the next step.
 
         Here is the conversation so far:
         {conversation_context}
@@ -132,76 +217,33 @@ class SalesAgentBot:
         Here is the customer's question: "{query}"
         Based on the company's info, provide a helpful response.
         """
-
-
-
-        # Get the response from the model
         response = self.qa.run(prompt)
-
-        # Add the model's response to the conversation history
-        self.history.append(f"SalesBot: {response}")
-
-        # Return the response to the user
+        self.save_user_message(user_id, f"SalesBot: {response}")
         return response
 
-    def get_conversation_history(self) -> str:
-        # Return the entire conversation history
-        return "\n".join(self.history)
 import os
-import os
-import requests
+db_path = "user_histories.db"
 
-# Define the GitHub URL and the local file path
-GITHUB_URL = "https://raw.githubusercontent.com/advik-7/IG/main/Company%20Text%20database.pdf"
-LOCAL_FILE_PATH = "Company_Text_database.pdf"
-
-# Check if the file exists locally; if not, download it
-if not os.path.exists(LOCAL_FILE_PATH):
-    print("Downloading file from GitHub...")
-    response = requests.get(GITHUB_URL)
-    if response.status_code == 200:
-        with open(LOCAL_FILE_PATH, "wb") as file:
-            file.write(response.content)
-        print(f"File downloaded successfully and saved as {LOCAL_FILE_PATH}")
-    else:
-        print("Failed to download the file.")
-        exit(1)
-
-# Proceed with using the local file
-file_path = LOCAL_FILE_PATH
-
-# Initialize the bot with the file
-bot = SalesAgentBot(file_path)
-
-
-
+bot = SalesAgentBot(file_path, db_path)
 import re
 from datetime import datetime, timedelta
 
-# Function to handle chatbot processing
-def chatbot_response(user_message: str):
-    # Check if the user is making a booking request
-    if user_message==None:
-        # If it's a valid booking request, the function already handled it
+def chatbot_response(user_id: str, user_message: str):
+    if not user_message:
         return "Server Issue :)"
     else:
-        # Otherwise, process the query normally
-        response = bot.process_query(user_message)
+        # Process the query for the specific user
+        response = bot.process_query(user_id, user_message)
         return response
-
-
-
 
 from flask import Flask, request, jsonify
 import hashlib
 import hmac
 import time
 import requests
-
 import requests
 import os
 
-ACCESS_TOKEN =os.environ["ACCESS_TOKEN"]
 BASE_URL = "https://graph.facebook.com/v21.0"
 
 def get_pages():
@@ -233,135 +275,161 @@ output=get_pages()
 PAGE_ACCESS_TOKEN = output[0]['access_token']
 VERIFY_TOKEN = "nigga"
 APP_SECRET = output[0]['access_token']
-app = Flask(__name__)
+from fastapi import FastAPI, Request, Depends, HTTPException ,Query
+from pydantic import BaseModel
+import requests
+import hmac
+import uvicorn
+from fastapi import FastAPI, Request, Query, HTTPException, Header
+from fastapi.responses import PlainTextResponse
+import httpx
+import hashlib
+import hmac
+import asyncio
 
-@app.route("/")
-def home():
-    return "Welcome to My App!"
+app = FastAPI()
 
-@app.route("/webhook", methods=["GET"])
-def verify_webhook():
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
+# Global Counter for Gemini API Calls
+gemini_request_count = 0  
 
-    if mode and token:
-        if mode == "subscribe" and token == VERIFY_TOKEN:
-            print("WEBHOOK_VERIFIED")
-            return challenge, 200
-        else:
-            return "Forbidden", 403
+@app.get("/")
+async def home():
+    return {"message": "Welcome to My App!"}
 
-# Handling incoming messages asynchronously
-@app.route("/webhook", methods=["POST"])
-def handle_webhook():
-    body = request.get_json()
+@app.get("/webhook")
+async def verify_webhook(
+    hub_mode: str = Query(..., alias="hub.mode"),
+    hub_challenge: int = Query(..., alias="hub.challenge"),
+    hub_verify_token: str = Query(..., alias="hub.verify_token"),
+):
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        print("WEBHOOK_VERIFIED")
+        return PlainTextResponse(str(hub_challenge), status_code=200)
+    raise HTTPException(status_code=403, detail="Forbidden")
+from fastapi import FastAPI, Request, HTTPException
+import time
+
+
+
+# In-memory cache for deduplication
+recent_message_ids = {}
+
+# Expiry time for deduplication (e.g., 10 minutes)
+EXPIRY_TIME = 120 
+
+@app.post("/webhook")
+async def handle_webhook(request: Request):
+    global gemini_request_count  
+    body = await request.json()
+    current_time = time.time()
 
     if body.get("object") == "instagram":
         for entry in body.get("entry", []):
-            messaging_events = entry.get("messaging", [])
-            for event in messaging_events:
+            for event in entry.get("messaging", []):
                 sender_id = event.get("sender", {}).get("id")
                 message = event.get("message", {})
+                message_id = message.get("mid")  # Unique message ID from Instagram
 
-                if sender_id and message:
+                if sender_id and message and message_id:
+                    # Deduplication check
+                    if message_id in recent_message_ids and current_time - recent_message_ids[message_id] < EXPIRY_TIME:
+                        return {"status": "DUPLICATE_IGNORED"}
+
+                    # Store the message ID
+                    recent_message_ids[message_id] = current_time
+
+                    # Cleanup old entries
+                    for key in list(recent_message_ids.keys()):
+                        if current_time - recent_message_ids[key] > EXPIRY_TIME:
+                            del recent_message_ids[key]
+
                     message_text = message.get("text", "")
                     is_deleted = message.get("is_deleted", False)
                     is_echo = message.get("is_echo", False)
 
-                    # Only process non-deleted and non-echo messages
                     if not is_echo and not is_deleted:
                         print(f"Instagram Message from {sender_id}: {message_text}")
-                        
-                        # Generate a response
-                        response_text = chatbot_response(message_text)
+
+                        # Track Gemini API request
+                        gemini_request_count += 1
+                        print(f"Total Gemini Requests Made: {gemini_request_count}")
+
+                        response_text = chatbot_response(sender_id, message_text)
 
                         # Send the response back
                         try:
-                            response = send_message(sender_id, response_text)
+                            response = await send_message(sender_id, response_text)
                             print("Reply sent successfully:", response)
                         except Exception as error:
                             print("Failed to send reply:", error)
-        
-        return "EVENT_RECEIVED", 200
- 
-    # Validate the event type
+
+        return {"status": "EVENT_RECEIVED"}
+
     elif body.get("object") == "page":
         for entry in body.get("entry", []):
-            webhook_event = entry.get("messaging", [])[0]
+            messaging_events = entry.get("messaging", [])
+            if not messaging_events:
+                continue  # Skip if no messaging events
+
+            webhook_event = messaging_events[0]
             print("Incoming Webhook Event: ", webhook_event)
 
-            # Log the message text if available
             if "message" in webhook_event and "text" in webhook_event["message"]:
                 sender_id = webhook_event["sender"]["id"]
                 message_text = webhook_event["message"]["text"]
 
                 # Log the incoming message and send a reply
-                print_message(sender_id, message_text)
+                await print_message(sender_id, message_text)
 
-        # Respond to Facebook server
-        return "EVENT_RECEIVED", 200
-    else:
-        return "Not Found", 404
+        return {"status": "EVENT_RECEIVED"}
 
+    raise HTTPException(status_code=404, detail="Not Found")  
 
-def print_message(sender_id, message_text):
+async def print_message(sender_id: str, message_text: str):
+    global gemini_request_count  
     print(f"Message from {sender_id}: {message_text}")
-    
-    response_text = chatbot_response(message_text)
+
+    # Track Gemini API request
+    gemini_request_count += 1
+    print(f"Total Gemini Requests Made: {gemini_request_count}")
+
+    response_text = chatbot_response(sender_id, message_text)
     print(response_text)
 
     try:
-        response = send_message(sender_id, response_text)
+        response = await send_message(sender_id, response_text)
         print("Reply sent successfully:", response)
     except Exception as error:
         print("Failed to send reply:", error)
 
-    # Return the input for further use
-    return sender_id, message_text, response_text
-
-# Function to send a message using Facebook Messenger API
-def send_message(ssid, text):
-    endpoint = "https://graph.facebook.com/v21.0/me/messages"
+async def send_message(ssid: str, text: str):
+    url = "https://graph.facebook.com/v21.0/me/messages"
     payload = {
         "recipient": {"id": ssid},
         "message": {"text": text},
     }
-    headers = {
-        "Content-Type": "application/json",
-    }
-    params = {
-        "access_token": PAGE_ACCESS_TOKEN,
-    }
+    headers = {"Content-Type": "application/json"}
+    params = {"access_token": PAGE_ACCESS_TOKEN}
 
-    response = requests.post(endpoint, json=payload, headers=headers, params=params)
-    if response.status_code == 200:
-        print(f"Message sent to {ssid}: {text}")
-        return response.json()  # API response
-    else:
-        print("Failed to send message:", response.text)
-        response.raise_for_status()
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload, headers=headers, params=params)
+        response.raise_for_status()  # Raise error if request fails
+        return response.json()
 
-# Define your Agent function here
-def Agent(message_text):
-    
-    response_text = bot.process_query(message_text)
-    return response_text
-
-def validate_signature(req):
-    signature = req.headers.get("x-hub-signature-256")
-    if not signature:
+async def validate_signature(req: Request, x_hub_signature_256: str = Header(None)):
+    if not x_hub_signature_256:
         print("No signature found in headers.")
         return False
 
-    method, signature_hash = signature.split("=")
+    method, signature_hash = x_hub_signature_256.split("=")
     if method != "sha256":
         print("Unknown signature method.")
         return False
 
+    body = await req.body()
     expected_hash = hmac.new(
         APP_SECRET.encode(),
-        req.data,
+        body,
         hashlib.sha256
     ).hexdigest()
 
