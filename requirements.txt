@@ -1,14 +1,15 @@
 Flask
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
 google-api-python-client
+faiss-cpu
+requests
+python-dotenv
+langchain_community
+ pypdf
+fastapi
+uvicorn
+python-dotenv
+google-generativeai
 langchain
 sentence-transformers
 faiss-cpu
-requests
-gunicorn
-python-dotenv
-langchain_community
-google-generativeai
- pypdf
+sqlite3
