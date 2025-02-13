@@ -12,4 +12,3 @@ google-generativeai
 langchain
 sentence-transformers
 faiss-cpu
-sqlite3
